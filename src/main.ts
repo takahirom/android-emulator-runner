@@ -14,7 +14,7 @@ import {
   playstoreTargetSubstitution,
   MIN_PORT,
 } from './input-validator';
-import { createAvd, launchEmulator, killEmulator } from './emulator-manager';
+import { createAvd, launchEmulator } from './emulator-manager';
 import * as exec from '@actions/exec';
 import { parseScript } from './script-parser';
 import { getChannelId } from './channel-id-mapper';
@@ -229,11 +229,9 @@ async function run() {
       core.setFailed(error instanceof Error ? error.message : (error as string));
     }
 
-    // finally kill the emulator
-    await killEmulator(port);
+    // NOTE: emulator is intentionally NOT killed here so it stays alive for
+    // subsequent workflow steps (e.g. running claude against the booted emulator).
   } catch (error) {
-    // kill the emulator so the action can exit
-    await killEmulator(port);
     core.setFailed(error instanceof Error ? error.message : (error as string));
   }
 }
