@@ -229,10 +229,16 @@ async function run() {
       core.setFailed(error instanceof Error ? error.message : (error as string));
     }
 
-    // NOTE: emulator is intentionally NOT killed here so it stays alive for
+    // NOTE: the emulator is intentionally NOT killed here so it stays alive for
     // subsequent workflow steps (e.g. running claude against the booted emulator).
+    // We must force-exit: the backgrounded emulator inherits this process's stdio
+    // pipes, so without killing it the node event loop never drains and the action
+    // would hang. Exit with the code core.setFailed may have set (e.g. when the custom
+    // script failed) so failures are not masked as success; otherwise exit 0.
+    process.exit(process.exitCode ?? 0);
   } catch (error) {
     core.setFailed(error instanceof Error ? error.message : (error as string));
+    process.exit(process.exitCode ?? 1);
   }
 }
 
