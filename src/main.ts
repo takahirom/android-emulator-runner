@@ -9,12 +9,13 @@ import {
   checkForceAvdCreation,
   checkChannel,
   checkEnableHardwareKeyboard,
+  checkKeepRunning,
   checkDiskSize,
   checkPort,
   playstoreTargetSubstitution,
   MIN_PORT,
 } from './input-validator';
-import { createAvd, launchEmulator } from './emulator-manager';
+import { createAvd, launchEmulator, killEmulator } from './emulator-manager';
 import * as exec from '@actions/exec';
 import { parseScript } from './script-parser';
 import { getChannelId } from './channel-id-mapper';
@@ -134,6 +135,12 @@ async function run() {
     const enableHardwareKeyboard = enableHardwareKeyboardInput === 'true';
     console.log(`enable hardware keyboard: ${enableHardwareKeyboard}`);
 
+    // keep the emulator running after the script so subsequent steps can use it
+    const keepRunningInput = core.getInput('keep-running');
+    checkKeepRunning(keepRunningInput);
+    const keepRunning = keepRunningInput === 'true';
+    console.log(`keep running: ${keepRunning}`);
+
     // emulator build
     const emulatorBuildInput = core.getInput('emulator-build');
     if (emulatorBuildInput) {
@@ -229,16 +236,21 @@ async function run() {
       core.setFailed(error instanceof Error ? error.message : (error as string));
     }
 
-    // NOTE: the emulator is intentionally NOT killed here so it stays alive for
-    // subsequent workflow steps (e.g. running claude against the booted emulator).
-    // We must force-exit: the backgrounded emulator inherits this process's stdio
-    // pipes, so without killing it the node event loop never drains and the action
-    // would hang. Exit with the code core.setFailed may have set (e.g. when the custom
-    // script failed) so failures are not masked as success; otherwise exit 0.
-    process.exit(process.exitCode ?? 0);
+    // finally kill the emulator, unless the caller asked to keep it running
+    if (keepRunning) {
+      // Leave the emulator running for subsequent workflow steps. The backgrounded
+      // emulator inherits this process's stdio, so the node event loop will not drain
+      // on its own — force-exit to let the action finish, propagating any exit code
+      // core.setFailed already set (e.g. when the custom script failed) so failures
+      // are not masked as success.
+      process.exit(process.exitCode ?? 0);
+    } else {
+      await killEmulator(port);
+    }
   } catch (error) {
+    // kill the emulator so the action can exit
+    await killEmulator(port);
     core.setFailed(error instanceof Error ? error.message : (error as string));
-    process.exit(process.exitCode ?? 1);
   }
 }
 
