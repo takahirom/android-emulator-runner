@@ -144,6 +144,38 @@ jobs:
           script: ./gradlew connectedCheck
 ```
 
+If you want to keep the emulator running for subsequent steps in the same job, set `keep-running: true`. The `EMULATOR_PORT` and `ANDROID_SERIAL` environment variables are exported to subsequent steps so `adb` targets the emulator without an explicit `-s`, and the emulator is killed automatically at the end of the job:
+
+```yml
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: boot emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          keep-running: true
+          script: echo "Emulator booted; kept running for later steps."
+
+      - name: run tests against the running emulator
+        run: ./gradlew connectedCheck
+
+      # optionally kill the emulator early instead of waiting for the end of the job
+      - name: kill emulator
+        if: always()
+        run: adb emu kill
+```
+
 We can significantly reduce emulator startup time by setting up AVD snapshot caching:
 
 1. add a `gradle/actions/setup-gradle@v5` step for caching Gradle, more details see [#229](https://github.com/ReactiveCircus/android-emulator-runner/issues/229)
@@ -223,7 +255,7 @@ jobs:
 | `disable-spellchecker` | Optional | `false` | Whether to disable spellchecker - `true` or `false`. |
 | `disable-linux-hw-accel` | Optional | `auto` | Whether to disable hardware acceleration on Linux machines - `true`, `false` or `auto`.|
 | `enable-hw-keyboard` | Optional | `false` | Whether to enable hardware keyboard - `true` or `false`. |
-| `keep-running` | Optional | `false` | Whether to keep the emulator running after the script so subsequent steps in the same job can use it - `true` or `false`. |
+| `keep-running` | Optional | `false` | Whether to keep the emulator running after the script so subsequent steps in the same job can use it - `true` or `false`. When `true`, `EMULATOR_PORT` and `ANDROID_SERIAL` are exported to subsequent steps and the emulator is killed automatically at the end of the job. |
 | `emulator-build` | Optional | N/A | Build number of a specific version of the emulator binary to use e.g. `6061023` for emulator v29.3.0.0. |
 | `working-directory` | Optional | `./` | A custom working directory - e.g. `./android` if your root Gradle project is under the `./android` sub-directory within your repository. Will be used for `script` & `pre-emulator-launch-script`. |
 | `ndk` | Optional | N/A | Version of NDK to install - e.g. `21.0.6113669` |
